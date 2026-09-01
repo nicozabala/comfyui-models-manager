@@ -11,7 +11,7 @@ from . import hosts, models_repo, storage
 from .errors import ConnectivityError, SecretError, TransferError
 from .hosts import Host
 from .models_repo import Model
-from .ssh import PART_SUFFIX, RemoteFS, upload_atomic
+from .ssh import PART_SUFFIX, RemoteFS, download_atomic, upload_atomic
 
 ConnectFn = Callable[[Host], RemoteFS]
 ConflictFn = Callable[["TransferPlan"], bool]
@@ -145,6 +145,70 @@ def _transfer_one(
         return TransferResult(plan, FAILED, str(exc))
 
     _record_placement(plan.model.id, plan.host.id)
+    return TransferResult(plan, COPIED)
+
+
+def import_from_host(
+    models: list[Model],
+    source: Host,
+    *,
+    connect: ConnectFn | None = None,
+    on_conflict: ConflictFn | None = None,
+    progress: ProgressFn | None = None,
+    host_key_prompt: object = None,
+) -> list[TransferResult]:
+    """Download models found on ``source`` but not in the repository, one at a time."""
+    if connect is None:
+        def connect(host: Host) -> RemoteFS:
+            return hosts.open_connection(host, host_key_prompt=host_key_prompt)
+
+    try:
+        remote = connect(source)
+    except (ConnectivityError, SecretError) as exc:
+        reason = getattr(exc, "reason", str(exc))
+        return [
+            TransferResult(TransferPlan(model, source, _dest(source, model)), FAILED, reason)
+            for model in models
+        ]
+    try:
+        return [
+            _download_one(remote, TransferPlan(model, source, _dest(source, model)),
+                           on_conflict, progress)
+            for model in models
+        ]
+    finally:
+        remote.close()
+
+
+def _download_one(
+    remote: RemoteFS,
+    plan: TransferPlan,
+    on_conflict: ConflictFn | None,
+    progress: ProgressFn | None,
+) -> TransferResult:
+    local_path = models_repo.repo_root() / plan.model.category / plan.model.filename
+    if local_path.is_file():
+        if local_path.stat().st_size == plan.model.size_bytes:
+            models_repo.mark_local(plan.model.id)
+            return TransferResult(plan, ALREADY_PRESENT)
+        if not (on_conflict(plan) if on_conflict else False):
+            return TransferResult(
+                plan, CONFLICT,
+                f"local size {local_path.stat().st_size} != {plan.model.size_bytes}",
+            )
+
+    remote_info = remote.stat(plan.remote_path)
+    if remote_info is None or remote_info.is_dir:
+        return TransferResult(plan, FAILED, "source file missing from host")
+
+    callback = (lambda done, total: progress(plan, done, total)) if progress else None
+    try:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        download_atomic(remote, plan.remote_path, local_path, progress=callback)
+    except TransferError as exc:
+        return TransferResult(plan, FAILED, str(exc))
+
+    models_repo.mark_local(plan.model.id)
     return TransferResult(plan, COPIED)
 
 

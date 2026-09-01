@@ -27,7 +27,9 @@ class Prompter(ABC):
     def select(self, message: str, options: Sequence[Choice | str]) -> object | None: ...
 
     @abstractmethod
-    def checkbox(self, message: str, options: Sequence[Choice | str]) -> list[object]: ...
+    def checkbox(
+        self, message: str, options: Sequence[Choice | str], *, checked: set[object] | None = None
+    ) -> list[object]: ...
 
     @abstractmethod
     def text(self, message: str, *, default: str = "") -> str | None: ...
@@ -62,12 +64,17 @@ class QuestionaryPrompter(Prompter):
         ).ask()
         return answer
 
-    def checkbox(self, message, options):
+    def checkbox(self, message, options, *, checked=None):
         import questionary
 
         choices = _as_choices(options)
+        checked = checked or set()
         answer = questionary.checkbox(
-            message, choices=[questionary.Choice(title=c[0], value=c[1]) for c in choices]
+            message,
+            choices=[
+                questionary.Choice(title=c[0], value=c[1], checked=c[1] in checked)
+                for c in choices
+            ],
         ).ask()
         return answer or []
 

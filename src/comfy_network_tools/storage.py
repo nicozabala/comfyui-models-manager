@@ -30,6 +30,7 @@ DEFAULT_CATEGORIES: list[str] = [
     "embeddings",
     "hypernetworks",
     "style_models",
+    "detection",
 ]
 
 _SCHEMA = """
@@ -77,6 +78,7 @@ CREATE TABLE IF NOT EXISTS settings (
 _REPO_ROOT_KEY = "repo_root"
 _CATEGORIES_KEY = "categories"
 _SCHEMA_VERSION_KEY = "schema_version"
+_CLEAN_TERMINAL_KEY = "clean_terminal"
 
 _connections: dict[str, sqlite3.Connection] = {}
 
@@ -97,11 +99,25 @@ def connect(path: str | Path) -> sqlite3.Connection:
 
 def _apply_schema(conn: sqlite3.Connection) -> None:
     conn.executescript(_SCHEMA)
+    _add_missing_columns(conn, "hosts", {"host_key": "TEXT"})
     if _raw_setting(conn, _SCHEMA_VERSION_KEY) is None:
         _write_setting(conn, _SCHEMA_VERSION_KEY, str(SCHEMA_VERSION))
     if _raw_setting(conn, _CATEGORIES_KEY) is None:
         _write_setting(conn, _CATEGORIES_KEY, json.dumps(DEFAULT_CATEGORIES))
     conn.commit()
+
+
+def _add_missing_columns(conn: sqlite3.Connection, table: str, columns: dict[str, str]) -> None:
+    """Backfill columns added to ``table`` after a database was first created.
+
+    ``CREATE TABLE IF NOT EXISTS`` leaves pre-existing tables untouched, so a
+    state.db from an earlier version of the schema won't pick up new columns
+    on its own.
+    """
+    existing = {row["name"] for row in conn.execute(f"PRAGMA table_info({table})")}
+    for name, declaration in columns.items():
+        if name not in existing:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {declaration}")
 
 
 def get_db() -> sqlite3.Connection:
@@ -169,3 +185,11 @@ def get_categories(conn: sqlite3.Connection) -> list[str]:
 def set_categories(conn: sqlite3.Connection, categories: list[str]) -> None:
     cleaned = [c.strip() for c in categories if c.strip()]
     set_setting(conn, _CATEGORIES_KEY, json.dumps(cleaned))
+
+
+def get_clean_terminal(conn: sqlite3.Connection) -> bool:
+    return _raw_setting(conn, _CLEAN_TERMINAL_KEY) == "1"
+
+
+def set_clean_terminal(conn: sqlite3.Connection, value: bool) -> None:
+    set_setting(conn, _CLEAN_TERMINAL_KEY, "1" if value else "0")

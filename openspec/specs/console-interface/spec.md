@@ -46,9 +46,10 @@ settings reachable.
 The system SHALL render the model-to-host matrix as a table with models as rows and
 hosts as columns, present/missing cells visually distinguished, and per-model
 coverage shown. The screen SHALL allow filtering by category and name fragment and
-SHALL let the user trigger a copy for a selected model directly from the view. While
-a copy runs, the screen SHALL show a per-file progress bar advancing toward each
-file's total size.
+SHALL let the user trigger a copy for a selected model directly from the view, and
+SHALL let the user trigger an import into the repository for a selected model that
+has no central repository copy. While a copy or import runs, the screen SHALL show
+a per-file progress bar advancing toward each file's total size.
 
 #### Scenario: Viewing the matrix
 
@@ -69,6 +70,16 @@ file's total size.
 
 - **WHEN** a copy started from the matrix is transferring a file to a host
 - **THEN** the screen shows a progress bar advancing toward that file's total size
+
+#### Scenario: Importing a host-only model from the matrix
+
+- **WHEN** the user selects a model row with no central repository copy and chooses to import it
+- **THEN** the system starts the import flow for that model, asking which host to download from when more than one holds it
+
+#### Scenario: No host-only models to import
+
+- **WHEN** the user chooses to import a model but the currently visible rows have no host-only model
+- **THEN** the system reports that there is nothing to import and does not start the flow
 
 ### Requirement: Host management screens
 

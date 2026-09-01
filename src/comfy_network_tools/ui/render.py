@@ -42,13 +42,24 @@ def _human_size(num: int) -> str:
 
 
 def model_table(models: list[Model]) -> Table:
+    """One heading row per category (in first-seen order) over that category's models.
+
+    Assumes ``models`` is already sorted by ``(category, filename)`` — the order
+    ``models_repo.list_models()`` returns — so each category's rows are contiguous.
+    """
     table = Table(title="Repository models")
-    table.add_column("Category")
     table.add_column("File")
     table.add_column("Size", justify="right")
     table.add_column("Source")
+
+    current_category: str | None = None
     for model in models:
-        table.add_row(model.category, model.filename, _human_size(model.size_bytes), model.source)
+        if model.category != current_category:
+            if current_category is not None:
+                table.add_section()
+            table.add_row(f"[bold cyan]{model.category}[/]", "", "")
+            current_category = model.category
+        table.add_row(model.filename, _human_size(model.size_bytes), model.source)
     return table
 
 

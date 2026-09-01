@@ -80,6 +80,42 @@ unless the user has requested an overwrite.
 - **WHEN** the destination file has the same name but a different byte size
 - **THEN** the system reports a conflict and transfers only if the user confirms overwrite
 
+### Requirement: A host-only model can be imported into the repository
+
+The system SHALL let the user download a model that is discovered on a host but
+has no central repository file (as recorded per the model-repository "may exist
+without a central repository copy" requirement) from one of the hosts holding it
+into the repository, at `<repository root>/<category>/<file name>`. The system
+SHALL create the local category directory if it does not exist. On success the
+system SHALL mark the model as backed by the central repository. If more than one
+host holds the model, the system SHALL let the user pick which host to download
+from.
+
+#### Scenario: Importing a host-only model
+
+- **WHEN** the user imports a host-only model and the download completes
+- **THEN** the file exists in the repository at `<category>/<file name>` with the same byte size as on the host, and the model is marked as backed by the repository
+
+#### Scenario: Local category directory missing
+
+- **WHEN** the user imports a model whose category directory does not yet exist in the repository
+- **THEN** the system creates the category directory before downloading the file
+
+#### Scenario: Model already present locally
+
+- **WHEN** the user imports a model and a file of the same name and byte size already exists at the repository destination
+- **THEN** the system skips the download, marks the model as backed by the repository, and reports it as already present
+
+#### Scenario: Same name but different size locally
+
+- **WHEN** the repository destination has a file with the same name but a different byte size
+- **THEN** the system reports a conflict and downloads only if the user confirms overwrite
+
+#### Scenario: Choosing among multiple hosts
+
+- **WHEN** the user imports a model that more than one host holds
+- **THEN** the system asks which host to download it from
+
 ### Requirement: Host placements can be reconciled by scanning
 
 The system SHALL let the user scan a host: list the model files under each category

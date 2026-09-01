@@ -1,6 +1,6 @@
 import sys
 
-from comfy_network_tools import models_repo
+from comfy_network_tools import models_repo, storage
 from comfy_network_tools.ui import app
 
 
@@ -34,6 +34,31 @@ def test_first_run_skip_keeps_repo_unconfigured(make_prompter, console, db):
     prompter = make_prompter(["", "exit"])  # blank path skips, then exit
     app.loop(prompter, console)
     assert not models_repo.is_configured()
+
+
+def test_loop_clears_terminal_between_actions_when_enabled(make_prompter, console, tmp_path, db):
+    root = tmp_path / "repo"
+    root.mkdir()
+    models_repo.set_repo_root(root)
+    storage.set_clean_terminal(db, True)
+    calls = []
+    console.clear = lambda *a, **k: calls.append(True)
+
+    prompter = make_prompter(["hosts", "back", "exit"])
+    app.loop(prompter, console)
+    assert calls
+
+
+def test_loop_does_not_clear_terminal_by_default(make_prompter, console, tmp_path, db):
+    root = tmp_path / "repo"
+    root.mkdir()
+    models_repo.set_repo_root(root)
+    calls = []
+    console.clear = lambda *a, **k: calls.append(True)
+
+    prompter = make_prompter(["hosts", "back", "exit"])
+    app.loop(prompter, console)
+    assert not calls
 
 
 def test_run_swallows_keyboard_interrupt(monkeypatch, console):

@@ -127,6 +127,13 @@ def register_host_model(category: str, filename: str, size_bytes: int) -> Model:
     )
 
 
+def mark_local(model_id: int) -> None:
+    """Flip a ``source = 'host'`` model to ``'local'`` once its file has been downloaded."""
+    conn = storage.get_db()
+    conn.execute("UPDATE models SET source = 'local' WHERE id = ?", (model_id,))
+    conn.commit()
+
+
 def prune_orphan_host_models() -> list[tuple[str, str]]:
     """Delete ``source = 'host'`` models that no host holds any more."""
     conn = storage.get_db()

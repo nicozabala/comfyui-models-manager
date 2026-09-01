@@ -66,6 +66,12 @@ class RemoteFS(ABC):
         """Upload a local file to ``remote_path`` (no atomicity — see :func:`upload_atomic`)."""
 
     @abstractmethod
+    def get(
+        self, remote_path: str, local_path: str | Path, *, progress: ProgressCallback | None = None
+    ) -> None:
+        """Download ``remote_path`` to a local file (no atomicity — see :func:`download_atomic`)."""
+
+    @abstractmethod
     def remove(self, path: str) -> None:
         """Delete a remote file (no error if already gone)."""
 
@@ -108,6 +114,38 @@ def _safe_remove(fs: RemoteFS, path: str) -> None:
     try:
         fs.remove(path)
     except Exception:  # noqa: BLE001 - best-effort cleanup
+        pass
+
+
+def download_atomic(
+    fs: RemoteFS,
+    remote_path: str,
+    local_path: str | Path,
+    *,
+    progress: ProgressCallback | None = None,
+) -> None:
+    """Download to ``<local_path>.cnt-part`` then rename into place.
+
+    On any failure the partial file is removed and the exception propagates as a
+    :class:`TransferError`; no file appears at ``local_path``.
+    """
+    local_path = Path(local_path)
+    part_path = local_path.with_name(local_path.name + PART_SUFFIX)
+    try:
+        fs.get(remote_path, part_path, progress=progress)
+        part_path.replace(local_path)
+    except TransferError:
+        _safe_unlink(part_path)
+        raise
+    except Exception as exc:  # noqa: BLE001 - normalise any transport error
+        _safe_unlink(part_path)
+        raise TransferError(f"download of {remote_path} failed: {exc}") from exc
+
+
+def _safe_unlink(path: Path) -> None:
+    try:
+        path.unlink()
+    except OSError:
         pass
 
 
@@ -178,6 +216,24 @@ class InMemoryRemoteFS(RemoteFS):
             for done in (0, total // 2, total):
                 progress(done, total)
         self._files[remote_path] = total
+
+    def get(
+        self, remote_path: str, local_path: str | Path, *, progress: ProgressCallback | None = None
+    ) -> None:
+        remote_path = posixpath.normpath(remote_path)
+        if remote_path not in self._files:
+            raise TransferError(f"remote file missing: {remote_path}")
+        total = self._files[remote_path]
+        if self.put_failure is not None or remote_path in self.fail_paths:
+            if progress is not None:
+                progress(total // 2, total)
+            failure = self.put_failure or TransferError("simulated transfer failure")
+            self.put_failure = None
+            raise failure
+        if progress is not None:
+            for done in (0, total // 2, total):
+                progress(done, total)
+        Path(local_path).write_bytes(b"\0" * total)
 
     def remove(self, path: str) -> None:
         self._files.pop(posixpath.normpath(path), None)
@@ -373,6 +429,15 @@ class ParamikoRemoteFS(RemoteFS):
             self._sftp.put(str(local_path), remote_path, callback=callback)
         except OSError as exc:
             raise TransferError(f"upload to {remote_path} failed: {exc}") from exc
+
+    def get(
+        self, remote_path: str, local_path: str | Path, *, progress: ProgressCallback | None = None
+    ) -> None:
+        callback = (lambda done, total: progress(done, total)) if progress else None
+        try:
+            self._sftp.get(remote_path, str(local_path), callback=callback)
+        except OSError as exc:
+            raise TransferError(f"download of {remote_path} failed: {exc}") from exc
 
     def remove(self, path: str) -> None:
         try:

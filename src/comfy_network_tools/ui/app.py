@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import sys
 
-from .. import models_repo
+from .. import models_repo, storage
 from . import downloads, matrix, render, settings
 from . import hosts as hosts_ui
 from .prompts import Prompter, QuestionaryPrompter
@@ -66,6 +66,8 @@ def loop(prompter: Prompter, console) -> None:
             downloads.download_screen(prompter, console)
         elif choice == "settings":
             settings.settings_screen(prompter, console)
+        if storage.get_clean_terminal(storage.get_db()):
+            console.clear()
 
 
 def _models_screen(prompter: Prompter, console) -> None:

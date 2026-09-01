@@ -18,6 +18,7 @@ def _print_state(console) -> None:
         + (f"{status.preview} ({status.source})" if status.configured else "not configured")
     )
     console.print(f"Key file        : {config.secret_key_path()}")
+    console.print(f"Clean terminal  : {'on' if storage.get_clean_terminal(conn) else 'off'}")
 
 
 def run_reindex(console):
@@ -44,6 +45,7 @@ def settings_screen(prompter: Prompter, console) -> None:
                 ("Edit categories", "categories"),
                 ("Set Hugging Face token", "token"),
                 ("Re-index repository", "reindex"),
+                ("Toggle clean terminal", "clean_terminal"),
                 ("Back", "back"),
             ],
         )
@@ -58,6 +60,8 @@ def settings_screen(prompter: Prompter, console) -> None:
                 _set_token(prompter, console)
             elif action == "reindex":
                 run_reindex(console)
+            elif action == "clean_terminal":
+                _toggle_clean_terminal(prompter, console)
         except CntError as exc:
             console.print(f"[red]{exc}[/]")
 
@@ -79,6 +83,14 @@ def _set_categories(prompter: Prompter, console) -> None:
         return
     storage.set_categories(storage.get_db(), [c.strip() for c in answer.split(",")])
     console.print("[green]Categories updated.[/]")
+
+
+def _toggle_clean_terminal(prompter: Prompter, console) -> None:
+    conn = storage.get_db()
+    current = storage.get_clean_terminal(conn)
+    enabled = prompter.confirm("Enable clean terminal mode?", default=current)
+    storage.set_clean_terminal(conn, enabled)
+    console.print(f"[green]Clean terminal mode {'enabled' if enabled else 'disabled'}.[/]")
 
 
 def _set_token(prompter: Prompter, console) -> None:

@@ -61,3 +61,11 @@ def test_categories_seeded_and_settings_round_trip(db):
 
 def test_get_db_returns_same_cached_connection(db):
     assert storage.get_db() is db
+
+
+def test_clean_terminal_defaults_off_and_round_trips(db):
+    assert storage.get_clean_terminal(db) is False
+    storage.set_clean_terminal(db, True)
+    assert storage.get_clean_terminal(db) is True
+    storage.set_clean_terminal(db, False)
+    assert storage.get_clean_terminal(db) is False

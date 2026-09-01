@@ -16,6 +16,8 @@ class ScriptedPrompter(Prompter):
     def __init__(self, answers):
         self._answers = list(answers)
         self.calls: list[tuple[str, str]] = []
+        #: The `checked` kwarg seen on each `checkbox()` call, in order.
+        self.checked_seen: list[set[object] | None] = []
 
     def _next(self, kind: str, message: str):
         self.calls.append((kind, message))
@@ -26,7 +28,8 @@ class ScriptedPrompter(Prompter):
     def select(self, message, options):
         return self._next("select", message)
 
-    def checkbox(self, message, options):
+    def checkbox(self, message, options, *, checked=None):
+        self.checked_seen.append(checked)
         return self._next("checkbox", message)
 
     def text(self, message, *, default=""):

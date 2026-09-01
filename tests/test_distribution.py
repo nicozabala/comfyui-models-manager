@@ -200,6 +200,75 @@ def test_reconcile_drops_orphaned_host_model(repo, cloud):
     assert models_repo.list_models() == []
 
 
+# --- import (host -> repository) ---
+
+
+def test_import_downloads_host_only_model_into_repo(repo, cloud):
+    h = make_host("h1")
+    cloud(h).add_file("/models/vae/stranger.safetensors", 3)
+    distribution.reconcile(h.id, connect=cloud)
+    (model,) = [m for m in models_repo.list_models() if m.filename == "stranger.safetensors"]
+    assert model.source == "host"
+
+    (result,) = distribution.import_from_host([model], h, connect=cloud)
+    assert result.outcome == distribution.COPIED
+    assert (repo / "vae" / "stranger.safetensors").stat().st_size == 3
+    imported = models_repo.get_model(model.id)
+    assert imported.source == "local"
+
+
+def test_import_skips_when_already_present_locally(repo, cloud):
+    m = add_model(repo, "loras", "a.safetensors", 8)
+    h = make_host("h1")
+    cloud(h).add_file("/models/loras/a.safetensors", 8)
+
+    (result,) = distribution.import_from_host([m], h, connect=cloud)
+    assert result.outcome == distribution.ALREADY_PRESENT
+
+
+def test_import_size_mismatch_is_a_conflict_unless_overwrite_confirmed(repo, cloud):
+    # A stray local file sits where the host-only model would land, sized differently
+    # from what the host reports (e.g. left over from before a reindex).
+    (repo / "loras" / "a.safetensors").write_bytes(b"\0" * 999)
+    m = models_repo.register_host_model("loras", "a.safetensors", 8)
+    h = make_host("h1")
+    cloud(h).add_file("/models/loras/a.safetensors", 8)
+    distribution._record_placement(m.id, h.id)
+
+    (result,) = distribution.import_from_host([m], h, connect=cloud)
+    assert result.outcome == distribution.CONFLICT
+
+    (result,) = distribution.import_from_host(
+        [m], h, connect=cloud, on_conflict=lambda plan: True
+    )
+    assert result.outcome == distribution.COPIED
+    assert (repo / "loras" / "a.safetensors").stat().st_size == 8
+
+
+def test_import_missing_source_file_fails(repo, cloud):
+    h = make_host("h1")
+    cloud(h)  # nothing on the host
+    from comfy_network_tools.models_repo import Model
+
+    ghost = Model(
+        id=999, category="loras", filename="ghost.safetensors", size_bytes=1,
+        indexed_at="t", source="host",
+    )
+    (result,) = distribution.import_from_host([ghost], h, connect=cloud)
+    assert result.outcome == distribution.FAILED
+
+
+def test_import_unreachable_host_fails(repo):
+    h = make_host("h1")
+    m = add_model(repo, "loras", "a.safetensors", 8)  # placeholder; not host-only, but ok here
+
+    def boom(host):
+        raise ConnectivityError("unreachable")
+
+    (result,) = distribution.import_from_host([m], h, connect=boom)
+    assert result.outcome == distribution.FAILED and result.detail == "unreachable"
+
+
 # --- 6.6 matrix ---
 
 

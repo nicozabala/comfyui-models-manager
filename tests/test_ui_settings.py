@@ -1,6 +1,6 @@
 import pytest
 
-from comfy_network_tools import models_repo
+from comfy_network_tools import models_repo, storage
 from comfy_network_tools.ui import settings as settings_ui
 
 
@@ -42,6 +42,25 @@ def test_set_repo_flow_configures_and_offers_reindex(make_prompter, console, tmp
     settings_ui._set_repo(prompter, console)
     assert models_repo.is_configured()
     assert models_repo.list_models()[0].filename == "x.safetensors"
+
+
+def test_toggle_clean_terminal_flips_and_persists(make_prompter, console, db):
+    assert storage.get_clean_terminal(db) is False
+    settings_ui._toggle_clean_terminal(make_prompter([True]), console)
+    assert storage.get_clean_terminal(db) is True
+    assert "enabled" in console.export_text().lower()
+
+    settings_ui._toggle_clean_terminal(make_prompter([False]), console)
+    assert storage.get_clean_terminal(db) is False
+
+
+def test_toggling_clean_terminal_then_reopening_settings_shows_new_state(
+    make_prompter, console, db
+):
+    prompter = make_prompter(["clean_terminal", True, "back"])
+    settings_ui.settings_screen(prompter, console)
+    assert storage.get_clean_terminal(db) is True
+    assert "Clean terminal  : on" in console.export_text()
 
 
 def test_set_token_flow_saves_and_validates(make_prompter, console, db, monkeypatch):

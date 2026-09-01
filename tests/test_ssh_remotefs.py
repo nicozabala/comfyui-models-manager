@@ -3,7 +3,7 @@ import posixpath
 import pytest
 
 from comfy_network_tools.errors import TransferError
-from comfy_network_tools.ssh import InMemoryRemoteFS, upload_atomic
+from comfy_network_tools.ssh import InMemoryRemoteFS, download_atomic, upload_atomic
 
 
 @pytest.fixture
@@ -78,3 +78,37 @@ def test_upload_atomic_failure_removes_part_and_leaves_no_file(fs, local_file):
         upload_atomic(fs, local_file, "/models/loras/m.safetensors")
     assert fs.stat("/models/loras/m.safetensors") is None
     assert fs.stat("/models/loras/m.safetensors.cnt-part") is None
+
+
+# --- get / download_atomic ---
+
+
+def test_get_requires_remote_file_and_writes_local_bytes(fs, tmp_path):
+    dest = tmp_path / "out.safetensors"
+    with pytest.raises(TransferError):
+        fs.get("/models/loras/x.safetensors", dest)
+    fs.add_file("/models/loras/x.safetensors", 2048)
+    fs.get("/models/loras/x.safetensors", dest)
+    assert dest.stat().st_size == 2048
+
+
+def test_download_atomic_success_renames_part_into_place(fs, tmp_path):
+    fs.add_file("/models/loras/m.safetensors", 2048)
+    dest = tmp_path / "m.safetensors"
+    seen = []
+    download_atomic(
+        fs, "/models/loras/m.safetensors", dest, progress=lambda a, b: seen.append((a, b))
+    )
+    assert dest.is_file() and dest.stat().st_size == 2048
+    assert not dest.with_name(dest.name + ".cnt-part").exists()
+    assert seen and seen[-1] == (2048, 2048)
+
+
+def test_download_atomic_failure_removes_part_and_leaves_no_file(fs, tmp_path):
+    fs.add_file("/models/loras/m.safetensors", 2048)
+    fs.fail_paths.add(posixpath.normpath("/models/loras/m.safetensors"))
+    dest = tmp_path / "m.safetensors"
+    with pytest.raises(TransferError):
+        download_atomic(fs, "/models/loras/m.safetensors", dest)
+    assert not dest.exists()
+    assert not dest.with_name(dest.name + ".cnt-part").exists()
